@@ -129,19 +129,21 @@ This implementation plan breaks down the Karbonica platform development into dis
 
 ## Phase 3: Cardano Wallet Integration
 
-- [ ] 7. Set up Cardano integration dependencies
+- [x] 7. Set up Cardano integration dependencies
+
   - Install cardano-serialization-lib or cardano-multiplatform-lib
   - Install blockfrost-js SDK
   - Configure Blockfrost API key for Preview testnet
   - Create Cardano configuration module
   - _Requirements: 15.1, 15.6_
 
-- [ ] 8. Implement Cardano wallet linking
+- [x] 8. Implement Cardano wallet linking
+
   - Create CardanoWallet entity and repository
   - Implement Cardano address validation (Bech32, Preview testnet)
   - Implement Ed25519 signature verification using Cardano libraries
   - Create challenge message generation
-  - Create POST /api/v1/users/me/wallet endpoint
+  - Create POST /api/v1/users/me/wallet endpoint [TODO]
   - Validate wallet address uniqueness
   - _Requirements: 2.3, 2.4, 2.8, 2.9, 15.10_
 
@@ -152,14 +154,16 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Test wallet linking flow
   - _Requirements: 2.3, 2.4, 2.8, 2.9_
 
-- [ ] 9. Implement Cardano wallet authentication
+- [x] 9. Implement Cardano wallet authentication
+
   - Create POST /auth/verify-wallet endpoint
   - Verify wallet signature against challenge
   - Match wallet address to user account
   - Generate and return JWT tokens on success
   - _Requirements: 2.1, 2.2, 2.3, 2.5, 2.6_
 
-- [ ] 10. Implement wallet unlinking
+- [x] 10. Implement wallet unlinking
+  
   - Create DELETE /api/v1/users/me/wallet endpoint
   - Remove wallet association from user
   - _Requirements: 2.10_
@@ -168,13 +172,15 @@ This implementation plan breaks down the Karbonica platform development into dis
 
 ## Phase 4: Role-Based Access Control
 
-- [ ] 11. Implement authorization middleware
+- [x] 11. Implement authorization middleware
+
   - Create authorization middleware for role checking
   - Implement permission validation based on user role
   - Create permission constants for each resource/action
   - _Requirements: 8.1-8.11_
 
-- [ ]* 11.1 Write authorization tests
+- [x] 11.1 Write authorization tests
+
   - Test developer permissions
   - Test verifier permissions
   - Test administrator permissions
@@ -182,7 +188,8 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Test unauthorized access rejection
   - _Requirements: 8.1-8.11_
 
-- [ ] 12. Implement row-level security helpers
+- [x] 12. Implement row-level security helpers
+
   - Create query filters for user-owned resources
   - Implement developer project access filter
   - Implement verifier verification access filter
@@ -193,7 +200,8 @@ This implementation plan breaks down the Karbonica platform development into dis
 
 ## Phase 5: Project Management
 
-- [ ] 13. Implement project registration
+- [x] 13. Implement project registration
+
   - Create Project entity with validation
   - Implement project type enumeration
   - Implement emissions target validation (positive, < 10M)
@@ -204,22 +212,25 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Assign current user as developer
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
 
-- [ ]* 13.1 Write project registration tests
+- [ ] 13.1 Write project registration tests
+
   - Test valid project creation
   - Test emissions target validation
   - Test country code validation
   - Test project type validation
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 14. Implement project document upload
+- [x] 14. Implement project document upload
+
   - Create ProjectDocument entity
-  - Integrate with S3-compatible storage service
+  - Integrate with S3-compatible storage service (Changed to SUPABASE's storage service)
   - Implement file upload with virus scanning
   - Create POST /api/v1/projects/:id/documents endpoint
   - Store document metadata in database
   - _Requirements: 3.10, 16.3, 16.4_
 
-- [ ] 15. Implement project retrieval and listing
+- [x] 15. Implement project retrieval and listing
+
   - Create GET /api/v1/projects/:id endpoint
   - Create GET /api/v1/projects endpoint with pagination
   - Implement cursor-based pagination
@@ -228,7 +239,8 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Apply row-level security (developers see own, buyers see verified)
   - _Requirements: 8.2, 10.9, 10.10, 10.11_
 
-- [ ] 16. Implement project update and deletion
+- [x] 16. Implement project update and deletion
+
   - Create PATCH /api/v1/projects/:id endpoint
   - Validate project is in "pending" status before allowing updates
   - Create DELETE /api/v1/projects/:id endpoint
@@ -239,23 +251,26 @@ This implementation plan breaks down the Karbonica platform development into dis
 
 ## Phase 6: Verification Workflow
 
-- [ ] 17. Implement verification request creation
+- [x] 17. Implement verification request creation
+
   - Create VerificationRequest entity
   - Automatically create verification request when project is created
   - Set status to "pending" and progress to 0%
   - Link verification to project
   - _Requirements: 3.7, 4.2_
 
-- [ ] 18. Implement verifier assignment
+- [x] 18. Implement verifier assignment
+
   - Create POST /api/v1/verifications/:id/assign endpoint
   - Validate user is administrator
   - Update verification status to "in_review"
   - Update progress to 30%
-  - Send notification to verifier
+  - Send notification to verifier A
   - Create timeline event
   - _Requirements: 4.1, 4.3, 8.7_
 
-- [ ] 19. Implement verification document upload
+- [x] 19. Implement verification document upload
+  
   - Create VerificationDocument entity
   - Create POST /api/v1/verifications/:id/documents endpoint
   - Upload file to storage
@@ -263,14 +278,16 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Create timeline event
   - _Requirements: 4.4, 4.10_
 
-- [ ] 20. Implement verification timeline
+- [x] 20. Implement verification timeline
+
   - Create VerificationEvent entity
   - Create POST /api/v1/verifications/:id/timeline endpoint
   - Create GET /api/v1/verifications/:id/timeline endpoint
   - Record timestamp, event type, message, user ID
   - _Requirements: 4.5, 4.10_
 
-- [ ] 21. Implement verification approval
+- [x] 21. Implement verification approval
+
   - Create POST /api/v1/verifications/:id/approve endpoint
   - Validate user is assigned verifier or administrator
   - Validate at least 3 documents are present
@@ -280,7 +297,8 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Create timeline event
   - _Requirements: 4.6, 4.7, 4.11, 8.8_
 
-- [ ] 22. Implement verification rejection
+- [x] 22. Implement verification rejection
+
   - Create POST /api/v1/verifications/:id/reject endpoint
   - Require rejection reason
   - Update verification status to "rejected"
@@ -289,7 +307,8 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Send notification to developer
   - _Requirements: 4.8, 4.11_
 
-- [ ] 23. Implement verification listing and retrieval
+- [x] 23. Implement verification listing and retrieval
+
   - Create GET /api/v1/verifications endpoint
   - Create GET /api/v1/verifications/:id endpoint
   - Apply row-level security (verifiers see assigned, developers see own)

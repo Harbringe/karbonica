@@ -2,11 +2,13 @@ import { IUserRepository } from '../../domain/repositories/IUserRepository';
 import { IEmailVerificationTokenRepository } from '../../domain/repositories/IEmailVerificationTokenRepository';
 import { ISessionRepository } from '../../domain/repositories/ISessionRepository';
 import { IEmailService } from '../../domain/services/IEmailService';
+import { ICardanoWalletRepository } from '../../domain/repositories/ICardanoWalletRepository';
 import { User, CreateUserData, UserRole } from '../../domain/entities/User';
 import { Session } from '../../domain/entities/Session';
 import { CryptoUtils, AuthTokens } from '../../utils/crypto';
 import { validateEmail } from '../../utils/validation';
 import { logger } from '../../utils/logger';
+import { CardanoWalletService } from '../../domain/services/CardanoWalletService';
 
 export interface RegisterUserData {
   email: string;
@@ -37,13 +39,17 @@ export class AuthService {
   private readonly ACCOUNT_LOCKOUT_THRESHOLD = 5;
   private readonly ACCOUNT_LOCKOUT_DURATION_MS = 30 * 60 * 1000; // 30 minutes
   private readonly FAILED_LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+  private walletService: CardanoWalletService;
 
   constructor(
     private userRepository: IUserRepository,
     private emailVerificationTokenRepository: IEmailVerificationTokenRepository,
     private sessionRepository: ISessionRepository,
-    private emailService: IEmailService
-  ) {}
+    private emailService: IEmailService,
+    private walletRepository: ICardanoWalletRepository
+  ) {
+    this.walletService = new CardanoWalletService(walletRepository, userRepository);
+  }
 
   async register(data: RegisterUserData): Promise<RegisterUserResult> {
     // Validate email format
@@ -329,5 +335,98 @@ export class AuthService {
     logger.info('Token refreshed', { userId: user.id });
 
     return tokens;
+  }
+
+  /**
+   * Verify wallet authentication
+   * Requirements: 2.1, 2.2, 2.3, 2.5, 2.6
+   */
+  async verifyWallet(
+    challengeId: string,
+    address: string,
+    signature: string,
+    publicKey: string,
+    ipAddress: string,
+    userAgent: string
+  ): Promise<LoginResult> {
+    // Verify signature against challenge
+    const isValidSignature = await this.walletService.verifySignature(
+      challengeId,
+      address,
+      signature,
+      publicKey
+    );
+
+    if (!isValidSignature) {
+      logger.warn('Wallet authentication failed - invalid signature', { address });
+      throw new Error('Invalid signature or expired challenge');
+    }
+
+    // Match wallet address to user account
+    const wallet = await this.walletService.getWalletByAddress(address);
+
+    if (!wallet) {
+      logger.warn('Wallet authentication failed - wallet not linked', { address });
+      throw new Error('Wallet address not linked to any account');
+    }
+
+    // Get user
+    const user = await this.userRepository.findById(wallet.userId);
+
+    if (!user) {
+      logger.error('Wallet authentication failed - user not found', {
+        address,
+        userId: wallet.userId,
+      });
+      throw new Error('User not found');
+    }
+
+    // Check if account is locked
+    if (user.accountLocked) {
+      logger.warn('Wallet authentication failed - account locked', {
+        userId: user.id,
+        address,
+      });
+      throw new Error('Account is locked. Please contact support.');
+    }
+
+    // Update last login timestamp
+    user.lastLoginAt = new Date();
+    await this.userRepository.update(user);
+
+    // Generate JWT tokens
+    const tokens = CryptoUtils.generateAuthTokens({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+    });
+
+    // Create session
+    const session: Session = {
+      id: CryptoUtils.generateId(),
+      userId: user.id,
+      accessToken: CryptoUtils.hashToken(tokens.accessToken),
+      refreshToken: CryptoUtils.hashToken(tokens.refreshToken),
+      expiresAt: tokens.refreshTokenExpiry,
+      ipAddress,
+      userAgent,
+      createdAt: new Date(),
+    };
+
+    await this.sessionRepository.save(session);
+
+    logger.info('Wallet authentication successful', {
+      userId: user.id,
+      address,
+      ipAddress,
+    });
+
+    // Return user without password hash
+    const { passwordHash: _, ...userWithoutPassword } = user;
+
+    return {
+      user: userWithoutPassword,
+      tokens,
+    };
   }
 }

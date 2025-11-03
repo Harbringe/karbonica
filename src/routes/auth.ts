@@ -3,6 +3,7 @@ import { AuthService } from '../application/services/AuthService';
 import { UserRepository } from '../infrastructure/repositories/UserRepository';
 import { EmailVerificationTokenRepository } from '../infrastructure/repositories/EmailVerificationTokenRepository';
 import { SessionRepository } from '../infrastructure/repositories/SessionRepository';
+import { CardanoWalletRepository } from '../infrastructure/repositories/CardanoWalletRepository';
 import { ConsoleEmailService } from '../infrastructure/services/ConsoleEmailService';
 import { SmtpEmailService } from '../infrastructure/services/SmtpEmailService';
 import { MailgunEmailService } from '../infrastructure/services/MailgunEmailService';
@@ -14,6 +15,7 @@ import {
   LoginResponse,
   refreshTokenRequestSchema,
 } from '../application/dto/auth.dto';
+import { verifyWalletRequestSchema, VerifyWalletResponse } from '../application/dto/wallet.dto';
 import { validateRequest } from '../middleware/validation';
 
 const router = Router();
@@ -23,6 +25,7 @@ const getAuthService = () => {
   const userRepository = new UserRepository();
   const emailVerificationTokenRepository = new EmailVerificationTokenRepository();
   const sessionRepository = new SessionRepository();
+  const walletRepository = new CardanoWalletRepository();
 
   // Choose email service based on configuration
   let emailService;
@@ -44,7 +47,8 @@ const getAuthService = () => {
     userRepository,
     emailVerificationTokenRepository,
     sessionRepository,
-    emailService
+    emailService,
+    walletRepository
   );
 };
 
@@ -388,6 +392,162 @@ router.post(
             status: 'error',
             code: 'INVALID_REFRESH_TOKEN',
             title: 'Invalid Refresh Token',
+            detail: error.message,
+            meta: {
+              timestamp: new Date().toISOString(),
+              requestId: (req.headers['x-request-id'] as string) || 'unknown',
+            },
+          });
+        }
+      }
+
+      return next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/v1/auth/verify-wallet:
+ *   post:
+ *     summary: Authenticate with Cardano wallet signature
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - challengeId
+ *               - address
+ *               - signature
+ *               - publicKey
+ *             properties:
+ *               challengeId:
+ *                 type: string
+ *                 format: uuid
+ *               address:
+ *                 type: string
+ *                 description: Cardano wallet address (Bech32 format)
+ *               signature:
+ *                 type: string
+ *                 description: Ed25519 signature (hex)
+ *               publicKey:
+ *                 type: string
+ *                 description: Public key (hex)
+ *     responses:
+ *       200:
+ *         description: Wallet authentication successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       $ref: '#/components/schemas/User'
+ *                     tokens:
+ *                       type: object
+ *                       properties:
+ *                         accessToken:
+ *                           type: string
+ *                         refreshToken:
+ *                           type: string
+ *                         accessTokenExpiry:
+ *                           type: string
+ *                           format: date-time
+ *                         refreshTokenExpiry:
+ *                           type: string
+ *                           format: date-time
+ *       400:
+ *         description: Invalid signature or challenge
+ *       401:
+ *         description: Wallet not linked or account locked
+ */
+router.post(
+  '/verify-wallet',
+  validateRequest(verifyWalletRequestSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { challengeId, address, signature, publicKey } = req.body;
+      const ipAddress = (req.ip || req.socket.remoteAddress || 'unknown') as string;
+      const userAgent = req.headers['user-agent'] || 'unknown';
+
+      const authService = getAuthService();
+      const result = await authService.verifyWallet(
+        challengeId,
+        address,
+        signature,
+        publicKey,
+        ipAddress,
+        userAgent
+      );
+
+      const response: VerifyWalletResponse = {
+        status: 'success',
+        data: {
+          user: {
+            id: result.user.id,
+            email: result.user.email,
+            name: result.user.name,
+            company: result.user.company,
+            role: result.user.role,
+            emailVerified: result.user.emailVerified,
+            walletAddress: result.user.walletAddress,
+            lastLoginAt: result.user.lastLoginAt,
+          },
+          tokens: result.tokens,
+        },
+        meta: {
+          timestamp: new Date().toISOString(),
+          requestId: (req.headers['x-request-id'] as string) || 'unknown',
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.message === 'Invalid signature or expired challenge') {
+          return res.status(400).json({
+            status: 'error',
+            code: 'INVALID_SIGNATURE',
+            title: 'Invalid Signature',
+            detail: error.message,
+            meta: {
+              timestamp: new Date().toISOString(),
+              requestId: (req.headers['x-request-id'] as string) || 'unknown',
+            },
+          });
+        }
+
+        if (error.message === 'Wallet address not linked to any account') {
+          return res.status(401).json({
+            status: 'error',
+            code: 'WALLET_NOT_LINKED',
+            title: 'Wallet Not Linked',
+            detail:
+              'This wallet address is not linked to any account. Please link your wallet first.',
+            meta: {
+              timestamp: new Date().toISOString(),
+              requestId: (req.headers['x-request-id'] as string) || 'unknown',
+            },
+          });
+        }
+
+        if (
+          error.message === 'Account is locked. Please contact support.' ||
+          error.message === 'User not found'
+        ) {
+          return res.status(401).json({
+            status: 'error',
+            code: 'AUTHENTICATION_FAILED',
+            title: 'Authentication Failed',
             detail: error.message,
             meta: {
               timestamp: new Date().toISOString(),

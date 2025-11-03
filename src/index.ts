@@ -9,6 +9,10 @@ import { redis } from './config/redis';
 import { logger } from './utils/logger';
 import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
+import { walletRouter } from './routes/wallet';
+import { projectsRouter } from './routes/projects';
+import { projectDocumentsRouter } from './routes/projectDocuments';
+import { verificationsRouter } from './routes/verifications';
 import { adminUsersRouter } from './routes/admin/users';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
@@ -60,6 +64,10 @@ class App {
 
     // API routes
     this.app.use(`/api/${config.apiVersion}/auth`, authRouter);
+    this.app.use(`/api/${config.apiVersion}/users/me/wallet`, walletRouter);
+    this.app.use(`/api/${config.apiVersion}/projects`, projectsRouter);
+    this.app.use(`/api/${config.apiVersion}/projects`, projectDocumentsRouter);
+    this.app.use(`/api/${config.apiVersion}/verifications`, verificationsRouter);
     this.app.use(`/api/${config.apiVersion}/admin/users`, adminUsersRouter);
   }
 
