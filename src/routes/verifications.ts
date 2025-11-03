@@ -1,9 +1,12 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { VerificationService } from '../application/services/VerificationService';
+import { CreditService } from '../application/services/CreditService';
 import { VerificationRequestRepository } from '../infrastructure/repositories/VerificationRequestRepository';
 import { VerificationEventRepository } from '../infrastructure/repositories/VerificationEventRepository';
 import { VerificationDocumentRepository } from '../infrastructure/repositories/VerificationDocumentRepository';
+import { CreditEntryRepository } from '../infrastructure/repositories/CreditEntryRepository';
+import { CreditTransactionRepository } from '../infrastructure/repositories/CreditTransactionRepository';
 import { UserRepository } from '../infrastructure/repositories/UserRepository';
 import { ProjectRepository } from '../infrastructure/repositories/ProjectRepository';
 import { ConsoleEmailService } from '../infrastructure/services/ConsoleEmailService';
@@ -65,13 +68,25 @@ const getVerificationService = () => {
   const userRepository = new UserRepository();
   const projectRepository = new ProjectRepository();
   const emailService = new ConsoleEmailService();
+
+  // Initialize credit service for automatic credit issuance
+  const creditEntryRepository = new CreditEntryRepository();
+  const creditTransactionRepository = new CreditTransactionRepository();
+  const creditService = new CreditService(
+    creditEntryRepository,
+    creditTransactionRepository,
+    projectRepository,
+    userRepository
+  );
+
   return new VerificationService(
     verificationRepository,
     verificationEventRepository,
     verificationDocumentRepository,
     userRepository,
     emailService,
-    projectRepository
+    projectRepository,
+    creditService
   );
 };
 

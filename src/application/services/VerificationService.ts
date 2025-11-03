@@ -13,6 +13,7 @@ import {
 import { ProjectStatus } from '../../domain/entities/Project';
 import { UserRole } from '../../domain/entities/User';
 import { IEmailService } from '../../domain/services/IEmailService';
+import { CreditService } from './CreditService';
 import { logger } from '../../utils/logger';
 
 export class VerificationService {
@@ -22,7 +23,8 @@ export class VerificationService {
     private verificationDocumentRepository: IVerificationDocumentRepository,
     private userRepository: IUserRepository,
     private emailService: IEmailService,
-    private projectRepository?: IProjectRepository
+    private projectRepository?: IProjectRepository,
+    private creditService?: CreditService
   ) {}
 
   /**
@@ -317,6 +319,57 @@ export class VerificationService {
           verificationId,
           approvedBy: userId,
         });
+
+        // Issue carbon credits automatically (Requirements 5.1, 5.2, 5.3, 5.4, 5.5, 5.8)
+        if (this.creditService) {
+          try {
+            const { creditEntry, transaction } = await this.creditService.issueCredits(
+              verification.projectId,
+              verificationId
+            );
+
+            logger.info('Credits issued automatically on verification approval', {
+              verificationId,
+              projectId: verification.projectId,
+              creditId: creditEntry.creditId,
+              creditEntryId: creditEntry.id,
+              transactionId: transaction.id,
+              quantity: creditEntry.quantity,
+              vintage: creditEntry.vintage,
+              ownerId: creditEntry.ownerId,
+              approvedBy: userId,
+            });
+
+            // Create timeline event for credit issuance
+            const creditIssuanceEvent: VerificationEvent = {
+              id: uuidv4(),
+              verificationId: verification.id,
+              eventType: 'credits_issued',
+              message: `Carbon credits issued: ${creditEntry.quantity} tons CO2e (Serial: ${creditEntry.creditId})`,
+              userId,
+              metadata: {
+                creditId: creditEntry.creditId,
+                creditEntryId: creditEntry.id,
+                transactionId: transaction.id,
+                quantity: creditEntry.quantity,
+                vintage: creditEntry.vintage,
+                ownerId: creditEntry.ownerId,
+              },
+              createdAt: new Date(),
+            };
+
+            await this.verificationEventRepository.save(creditIssuanceEvent);
+          } catch (creditError) {
+            logger.error('Failed to issue credits on verification approval', {
+              error: creditError,
+              verificationId,
+              projectId: verification.projectId,
+              approvedBy: userId,
+            });
+            // Don't fail the verification approval if credit issuance fails
+            // This allows manual credit issuance later if needed
+          }
+        }
       }
     }
 

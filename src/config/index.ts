@@ -46,6 +46,25 @@ const envSchema = z.object({
 
   // Application
   FRONTEND_URL: z.string().url().default('http://localhost:5173'),
+
+  // Vault Configuration
+  VAULT_PROVIDER: z
+    .enum(['local-dev', 'aws-kms', 'azure-keyvault', 'hashicorp-vault'])
+    .default('local-dev'),
+  VAULT_REGION: z.string().optional(),
+  VAULT_KEY_ID: z.string().optional(),
+  VAULT_URL: z.string().url().optional(),
+  VAULT_ACCESS_KEY_ID: z.string().optional(),
+  VAULT_SECRET_ACCESS_KEY: z.string().optional(),
+  VAULT_CLIENT_ID: z.string().optional(),
+  VAULT_CLIENT_SECRET: z.string().optional(),
+  VAULT_TENANT_ID: z.string().optional(),
+  VAULT_TOKEN: z.string().optional(),
+
+  // Platform Wallet Configuration
+  PLATFORM_WALLET_NAME: z.string().default('karbonica-platform-wallet'),
+  PLATFORM_WALLET_MIN_BALANCE: z.string().transform(Number).default('100000000'), // 100 ADA in lovelace
+  PLATFORM_WALLET_ALERT_THRESHOLD: z.string().transform(Number).default('500000000'), // 500 ADA in lovelace
 });
 
 // Parse and validate environment variables
@@ -102,6 +121,28 @@ export const config = {
 
   app: {
     frontendUrl: env.FRONTEND_URL,
+  },
+
+  vault: {
+    provider: env.VAULT_PROVIDER,
+    region: env.VAULT_REGION,
+    keyId: env.VAULT_KEY_ID,
+    vaultUrl: env.VAULT_URL,
+    credentials: {
+      accessKeyId: env.VAULT_ACCESS_KEY_ID,
+      secretAccessKey: env.VAULT_SECRET_ACCESS_KEY,
+      clientId: env.VAULT_CLIENT_ID,
+      clientSecret: env.VAULT_CLIENT_SECRET,
+      tenantId: env.VAULT_TENANT_ID,
+      token: env.VAULT_TOKEN,
+    },
+  },
+
+  platformWallet: {
+    walletName: env.PLATFORM_WALLET_NAME,
+    vaultKeyPrefix: `platform-wallet/${env.PLATFORM_WALLET_NAME}`,
+    minBalanceThreshold: env.PLATFORM_WALLET_MIN_BALANCE,
+    alertThreshold: env.PLATFORM_WALLET_ALERT_THRESHOLD,
   },
 } as const;
 

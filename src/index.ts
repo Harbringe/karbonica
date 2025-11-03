@@ -6,6 +6,7 @@ import { config } from './config';
 import { swaggerSpec } from './config/swagger';
 import { database } from './config/database';
 import { redis } from './config/redis';
+import { initializePlatformWallet, validatePlatformWalletConfig } from './config/platformWallet';
 import { logger } from './utils/logger';
 import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
@@ -13,6 +14,7 @@ import { walletRouter } from './routes/wallet';
 import { projectsRouter } from './routes/projects';
 import { projectDocumentsRouter } from './routes/projectDocuments';
 import { verificationsRouter } from './routes/verifications';
+import { creditsRouter } from './routes/credits';
 import { adminUsersRouter } from './routes/admin/users';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
@@ -68,6 +70,8 @@ class App {
     this.app.use(`/api/${config.apiVersion}/projects`, projectsRouter);
     this.app.use(`/api/${config.apiVersion}/projects`, projectDocumentsRouter);
     this.app.use(`/api/${config.apiVersion}/verifications`, verificationsRouter);
+    this.app.use(`/api/${config.apiVersion}/credits`, creditsRouter);
+    this.app.use(`/api/${config.apiVersion}`, creditsRouter); // For /users/:userId/credits endpoint
     this.app.use(`/api/${config.apiVersion}/admin/users`, adminUsersRouter);
   }
 
@@ -77,6 +81,10 @@ class App {
 
   public async start(): Promise<void> {
     try {
+      // Validate platform wallet configuration
+      validatePlatformWalletConfig();
+      logger.info('Platform wallet configuration validated');
+
       // Connect to database
       await database.connect();
       logger.info('Database connected successfully');
@@ -84,6 +92,10 @@ class App {
       // Connect to Redis
       await redis.connect();
       logger.info('Redis connected successfully');
+
+      // Initialize platform wallet
+      await initializePlatformWallet();
+      logger.info('Platform wallet initialized successfully');
 
       // Start session cleanup scheduler
       this.sessionCleanupInterval = startSessionCleanupScheduler();

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { database } from '../config/database';
 import { redis } from '../config/redis';
+import { checkPlatformWalletHealth } from '../config/platformWallet';
 import { logger } from '../utils/logger';
 
 export const healthRouter = Router();
@@ -9,12 +10,16 @@ healthRouter.get('/', async (req: Request, res: Response) => {
   try {
     // Check database connectivity
     const dbHealthy = await database.healthCheck();
-    
+
     // Check Redis connectivity
     const redisHealthy = await redis.healthCheck();
 
+    // Check platform wallet health
+    const walletHealth = await checkPlatformWalletHealth();
+    const walletHealthy = walletHealth.status !== 'critical';
+
     // Overall health status
-    const isHealthy = dbHealthy && redisHealthy;
+    const isHealthy = dbHealthy && redisHealthy && walletHealthy;
     const statusCode = isHealthy ? 200 : 503;
 
     const healthStatus = {
@@ -26,6 +31,12 @@ healthRouter.get('/', async (req: Request, res: Response) => {
         },
         redis: {
           status: redisHealthy ? 'up' : 'down',
+        },
+        platformWallet: {
+          status: walletHealth.status,
+          address: walletHealth.address,
+          balance: walletHealth.balance + ' ADA',
+          message: walletHealth.message,
         },
       },
     };

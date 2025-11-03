@@ -328,7 +328,8 @@ This implementation plan breaks down the Karbonica platform development into dis
 
 ## Phase 7: Carbon Credit Issuance
 
-- [ ] 24. Implement credit issuance on verification approval
+- [x] 24. Implement credit issuance on verification approval
+
   - Create CreditEntry entity
   - Generate unique serial number (format: KRB-YYYY-XXX-NNNNNN)
   - Set quantity equal to project emissions target
@@ -346,7 +347,8 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Test owner is developer
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 25. Implement credit retrieval and listing
+- [x] 25. Implement credit retrieval and listing
+
   - Create GET /api/v1/credits/:id endpoint
   - Create GET /api/v1/credits endpoint
   - Create GET /api/v1/users/:userId/credits endpoint
@@ -358,7 +360,8 @@ This implementation plan breaks down the Karbonica platform development into dis
 
 ## Phase 8: Cardano Blockchain Integration
 
-- [ ] 26. Implement platform wallet management
+- [x] 26. Implement platform wallet management
+
   - Create secure vault integration (AWS KMS, Azure Key Vault, or HashiCorp Vault)
   - Store platform wallet private key in vault
   - Implement wallet key retrieval with proper access controls
