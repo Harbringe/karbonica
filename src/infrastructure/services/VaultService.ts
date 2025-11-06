@@ -8,10 +8,11 @@
  */
 
 export interface VaultConfig {
-  provider: 'aws-kms' | 'azure-keyvault' | 'hashicorp-vault' | 'local-dev';
+  provider: 'aws-kms' | 'azure-keyvault' | 'hashicorp-vault' | 'local-dev' | 'file-dev';
   region?: string;
   keyId?: string;
   vaultUrl?: string;
+  vaultDir?: string; // For file-dev provider
   credentials?: {
     accessKeyId?: string;
     secretAccessKey?: string;
@@ -68,9 +69,10 @@ export interface VaultService {
 }
 
 /**
- * Local Development Vault Service
+ * Local Development Vault Service (Memory-based)
  *
  * WARNING: This is for development only and stores secrets in memory.
+ * Secrets are lost when the application restarts.
  * DO NOT use in production environments.
  */
 export class LocalDevVaultService implements VaultService {
@@ -108,6 +110,136 @@ export class LocalDevVaultService implements VaultService {
 }
 
 /**
+ * File-based Development Vault Service
+ *
+ * Stores secrets in encrypted files on disk for development.
+ * Secrets persist across application restarts.
+ * Still for development only - use proper vault services in production.
+ */
+export class FileDevVaultService implements VaultService {
+  private readonly vaultDir: string;
+  private readonly fs = require('fs');
+  private readonly path = require('path');
+  private readonly crypto = require('crypto');
+  private readonly encryptionKey: string;
+
+  constructor(vaultDir: string = './.vault') {
+    this.vaultDir = vaultDir;
+
+    // Create vault directory if it doesn't exist
+    if (!this.fs.existsSync(this.vaultDir)) {
+      this.fs.mkdirSync(this.vaultDir, { recursive: true });
+    }
+
+    // Generate or load encryption key
+    this.encryptionKey = this.getOrCreateEncryptionKey();
+  }
+
+  private getOrCreateEncryptionKey(): string {
+    const keyPath = this.path.join(this.vaultDir, '.vault-key');
+
+    if (this.fs.existsSync(keyPath)) {
+      // Load existing key
+      return this.fs.readFileSync(keyPath, 'utf8');
+    } else {
+      // Generate new key
+      const key = this.crypto.randomBytes(32).toString('hex');
+      this.fs.writeFileSync(keyPath, key, { mode: 0o600 }); // Restrict file permissions
+      return key;
+    }
+  }
+
+  private getFilePath(key: string): string {
+    // Replace path separators and special characters with underscores
+    const safeKey = key.replace(/[/\\:*?"<>|]/g, '_');
+    return this.path.join(this.vaultDir, `${safeKey}.enc`);
+  }
+
+  async storeSecret(key: string, value: string): Promise<void> {
+    try {
+      const filePath = this.getFilePath(key);
+      const encrypted = await this.encrypt(value);
+
+      await this.fs.promises.writeFile(filePath, encrypted);
+    } catch (error) {
+      throw new VaultError(`Failed to store secret: ${key}`, error as Error);
+    }
+  }
+
+  async getSecret(key: string): Promise<string> {
+    try {
+      const filePath = this.getFilePath(key);
+      const encrypted = await this.fs.promises.readFile(filePath, 'utf8');
+      return await this.decrypt(encrypted);
+    } catch (error) {
+      if ((error as any).code === 'ENOENT') {
+        throw new VaultSecretNotFoundError(key);
+      }
+      throw new VaultError(`Failed to get secret: ${key}`, error as Error);
+    }
+  }
+
+  async hasSecret(key: string): Promise<boolean> {
+    try {
+      const filePath = this.getFilePath(key);
+      await this.fs.promises.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async deleteSecret(key: string): Promise<void> {
+    try {
+      const filePath = this.getFilePath(key);
+      await this.fs.promises.unlink(filePath);
+    } catch (error) {
+      if ((error as any).code !== 'ENOENT') {
+        throw new VaultError(`Failed to delete secret: ${key}`, error as Error);
+      }
+      // File doesn't exist, that's fine
+    }
+  }
+
+  async encrypt(data: string): Promise<string> {
+    try {
+      const iv = this.crypto.randomBytes(16);
+      const key = Buffer.from(this.encryptionKey, 'hex').slice(0, 32); // Ensure 32 bytes for AES-256
+      const cipher = this.crypto.createCipheriv('aes-256-cbc', key, iv);
+
+      let encrypted = cipher.update(data, 'utf8', 'hex');
+      encrypted += cipher.final('hex');
+
+      return iv.toString('hex') + ':' + encrypted;
+    } catch (error) {
+      throw new VaultError('Failed to encrypt data', error as Error);
+    }
+  }
+
+  async decrypt(encryptedData: string): Promise<string> {
+    try {
+      const parts = encryptedData.split(':');
+      if (parts.length !== 2) {
+        throw new Error('Invalid encrypted data format');
+      }
+
+      const iv = Buffer.from(parts[0], 'hex');
+      const encrypted = parts[1];
+
+      const key = Buffer.from(this.encryptionKey, 'hex').slice(0, 32); // Ensure 32 bytes for AES-256
+      const decipher = this.crypto.createDecipheriv('aes-256-cbc', key, iv);
+
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+
+      return decrypted;
+    } catch (error) {
+      throw new VaultError('Failed to decrypt data', error as Error);
+    }
+  }
+}
+
+/**
  * Vault Service Factory
  *
  * Creates the appropriate vault service based on configuration
@@ -117,6 +249,8 @@ export class VaultServiceFactory {
     switch (config.provider) {
       case 'local-dev':
         return new LocalDevVaultService();
+      case 'file-dev':
+        return new FileDevVaultService(config.vaultDir);
       case 'aws-kms':
         // TODO: Implement AWS KMS service
         throw new Error('AWS KMS vault service not yet implemented');

@@ -49,8 +49,9 @@ const envSchema = z.object({
 
   // Vault Configuration
   VAULT_PROVIDER: z
-    .enum(['local-dev', 'aws-kms', 'azure-keyvault', 'hashicorp-vault'])
-    .default('local-dev'),
+    .enum(['local-dev', 'file-dev', 'aws-kms', 'azure-keyvault', 'hashicorp-vault'])
+    .default('file-dev'),
+  VAULT_DIR: z.string().default('./.vault'),
   VAULT_REGION: z.string().optional(),
   VAULT_KEY_ID: z.string().optional(),
   VAULT_URL: z.string().url().optional(),
@@ -128,6 +129,7 @@ export const config = {
     region: env.VAULT_REGION,
     keyId: env.VAULT_KEY_ID,
     vaultUrl: env.VAULT_URL,
+    vaultDir: env.VAULT_DIR,
     credentials: {
       accessKeyId: env.VAULT_ACCESS_KEY_ID,
       secretAccessKey: env.VAULT_SECRET_ACCESS_KEY,

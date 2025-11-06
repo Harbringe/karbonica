@@ -27,8 +27,11 @@
     "license": "MIT",
     "dependencies": {
         "@blockfrost/blockfrost-js": "^6.0.0",
-        "@supabase/supabase-js": "^2.39.0",
         "@emurgo/cardano-serialization-lib-nodejs": "^15.0.1",
+        "@meshsdk/core": "^1.9.0-beta.86",
+        "@meshsdk/core-cst": "^1.9.0-beta.86",
+        "@meshsdk/provider": "^1.9.0-beta.86",
+        "@supabase/supabase-js": "^2.39.0",
         "@types/cbor": "^5.0.1",
         "bcrypt": "^5.1.1",
         "cbor": "^10.0.11",

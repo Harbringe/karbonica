@@ -269,6 +269,9 @@ secrets/
 api-keys/
 .api-keys/
 
+# Vault storage (contains encrypted wallet keys)
+.vault/
+
 # Application specific
 uploads/
 storage/

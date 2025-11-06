@@ -368,7 +368,7 @@ This implementation plan breaks down the Karbonica platform development into dis
   - Create utility to check platform wallet balance
   - _Requirements: 15.2, 15.18_
 
-- [ ] 27. Implement Cardano transaction building
+- [x] 27. Implement Cardano transaction building
   - Create CardanoTransactionService
   - Implement transaction builder using cardano-serialization-lib
   - Implement protocol parameters fetching from Blockfrost

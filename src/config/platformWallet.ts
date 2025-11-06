@@ -165,14 +165,14 @@ export function validatePlatformWalletConfig(): void {
   const { vault, platformWallet } = config;
 
   // Validate vault provider
-  const validProviders = ['local-dev', 'aws-kms', 'azure-keyvault', 'hashicorp-vault'];
+  const validProviders = ['local-dev', 'file-dev', 'aws-kms', 'azure-keyvault', 'hashicorp-vault'];
   if (!validProviders.includes(vault.provider)) {
     throw new Error(`Invalid vault provider: ${vault.provider}`);
   }
 
   // Validate production vault provider
-  if (config.env === 'production' && vault.provider === 'local-dev') {
-    throw new Error('local-dev vault provider cannot be used in production');
+  if (config.env === 'production' && ['local-dev', 'file-dev'].includes(vault.provider)) {
+    throw new Error('local-dev and file-dev vault providers cannot be used in production');
   }
 
   // Validate balance thresholds

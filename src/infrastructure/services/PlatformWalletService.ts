@@ -9,7 +9,10 @@
  */
 
 import { VaultService, VaultError } from './VaultService';
-import { initializeBlockfrostClient, getCardanoConfig } from '../../config/cardano';
+// import { initializeBlockfrostClient, getCardanoConfig } from '../../config/cardano';
+import { MeshWallet, BlockfrostProvider, MeshTxBuilder } from '@meshsdk/core';
+
+import { getCardanoConfig } from '../../config/cardano';
 import { logger } from '../../utils/logger';
 
 export interface PlatformWalletConfig {
@@ -43,14 +46,17 @@ export interface WalletInfo {
 export class PlatformWalletService {
   private readonly vaultService: VaultService;
   private readonly config: PlatformWalletConfig;
-  private readonly blockfrost;
+  private readonly provider: BlockfrostProvider;
+  private meshWallet: MeshWallet | null = null;
   private cachedAddress?: string;
   private cachedPublicKey?: string;
 
   constructor(vaultService: VaultService, config: PlatformWalletConfig) {
     this.vaultService = vaultService;
     this.config = config;
-    this.blockfrost = initializeBlockfrostClient();
+
+    const cardanoConfig = getCardanoConfig();
+    this.provider = new BlockfrostProvider(cardanoConfig.blockfrostApiKey);
   }
 
   /**
@@ -70,8 +76,12 @@ export class PlatformWalletService {
         await this.loadWalletInfo();
       }
 
+      // Initialize Mesh wallet
+      await this.initializeMeshWallet();
+
       // Check initial balance
       const balance = await this.getBalance();
+
       logger.info('Platform wallet initialized', {
         address: this.cachedAddress,
         balance: balance.ada,
@@ -81,9 +91,53 @@ export class PlatformWalletService {
       // Check if balance is below threshold
       await this.checkBalanceThreshold();
     } catch (error) {
-      logger.error('Failed to initialize platform wallet', { error });
+      // Better error logging
+      logger.error('Failed to initialize platform wallet', {
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+              }
+            : error,
+      });
       throw new PlatformWalletError('Failed to initialize platform wallet', error as Error);
     }
+  }
+
+  /**
+   * Initialize Mesh wallet instance
+   */
+  private async initializeMeshWallet(): Promise<void> {
+    if (!this.meshWallet) {
+      const mnemonic = await this.getPrivateKey();
+      const mnemonicWords = mnemonic.split(' ');
+      const cardanoConfig = getCardanoConfig();
+
+      this.meshWallet = new MeshWallet({
+        networkId: cardanoConfig.network === 'mainnet' ? 1 : 0,
+        fetcher: this.provider,
+        submitter: this.provider,
+        key: {
+          type: 'mnemonic',
+          words: mnemonicWords,
+        },
+      });
+
+      // IMPORTANT: Initialize the wallet
+      await this.meshWallet.init();
+    }
+  }
+
+  /**
+   * Get Mesh wallet instance
+   */
+  async getMeshWallet(): Promise<MeshWallet> {
+    if (!this.meshWallet) {
+      await this.initializeMeshWallet();
+    }
+    return this.meshWallet!;
   }
 
   /**
@@ -103,48 +157,63 @@ export class PlatformWalletService {
   }
 
   /**
-   * Create a new platform wallet
-   *
-   * Generates new Cardano wallet keys and stores them securely in vault
+   * Create a new platform wallet using Mesh SDK
    */
   async createWallet(): Promise<void> {
     try {
-      // Import Cardano serialization library
-      const CardanoWasm = await import('@emurgo/cardano-serialization-lib-nodejs');
-
-      // Generate new private key
-      const privateKey = CardanoWasm.PrivateKey.generate_ed25519();
-      const publicKey = privateKey.to_public();
-
-      // Generate address for the current network
+      // Generate new wallet using Mesh
       const cardanoConfig = getCardanoConfig();
-      const networkId = cardanoConfig.network === 'mainnet' ? 1 : 0;
+      // Generate new mnemonic using Mesh SDK
+      const mnemonic = MeshWallet.brew(); // This returns a string of mnemonic words
 
-      const baseAddress = CardanoWasm.BaseAddress.new(
-        networkId,
-        CardanoWasm.StakeCredential.from_keyhash(publicKey.hash()),
-        CardanoWasm.StakeCredential.from_keyhash(publicKey.hash()) // Using same key for stake
-      );
+      // Handle both string and string[] cases
+      const mnemonicWords = Array.isArray(mnemonic) ? mnemonic : mnemonic.split(' ');
 
-      const address = baseAddress.to_address().to_bech32();
+      const mnemonicString = Array.isArray(mnemonic) ? mnemonic.join(' ') : mnemonic;
+
+      // Create wallet from mnemonic
+      const tempWallet = new MeshWallet({
+        networkId: cardanoConfig.network === 'mainnet' ? 1 : 0,
+        fetcher: this.provider,
+        submitter: this.provider,
+        key: {
+          type: 'mnemonic',
+          words: mnemonicWords,
+        },
+      });
+
+      // Initialize the wallet
+      await tempWallet.init();
+
+      // Get the generated keys and address
+      // const privateKey = await tempWallet.getPaymentKey();
+      const address = await tempWallet.getChangeAddress();
 
       // Store keys and address in vault
-      await this.vaultService.storeSecret(this.getPrivateKeyVaultKey(), privateKey.to_bech32());
-
-      await this.vaultService.storeSecret(this.getPublicKeyVaultKey(), publicKey.to_bech32());
-
+      await this.vaultService.storeSecret(this.getPrivateKeyVaultKey(), mnemonicString);
+      await this.vaultService.storeSecret(this.getPublicKeyVaultKey(), address); // Using address as public key reference
       await this.vaultService.storeSecret(this.getAddressVaultKey(), address);
 
       // Cache the values
       this.cachedAddress = address;
-      this.cachedPublicKey = publicKey.to_bech32();
+      this.cachedPublicKey = address;
 
       logger.info('Platform wallet created successfully', {
         address,
         network: cardanoConfig.network,
       });
     } catch (error) {
-      logger.error('Failed to create platform wallet', { error });
+      logger.error('Failed to create platform wallet', {
+        error:
+          error instanceof Error
+            ? {
+                name: error.name,
+                message: error.message,
+                stack: error.stack,
+                cause: error.cause,
+              }
+            : error,
+      });
       throw new PlatformWalletError('Failed to create platform wallet', error as Error);
     }
   }
@@ -205,25 +274,28 @@ export class PlatformWalletService {
   }
 
   /**
-   * Get platform wallet balance
+   * Get platform wallet balance using Mesh
    */
   async getBalance(): Promise<WalletBalance> {
     try {
-      const address = await this.getAddress();
-      const addressDetails = await this.blockfrost.addresses(address);
+      const meshWallet = await this.getMeshWallet();
+      const balance = await meshWallet.getBalance();
 
-      // Convert lovelace to ADA
-      const lovelaceAmount =
-        addressDetails.amount.find((a) => a.unit === 'lovelace')?.quantity || '0';
+      // Find lovelace amount
+      const lovelaceAsset = balance.find((asset) => asset.unit === 'lovelace');
+      const lovelaceAmount = lovelaceAsset ? lovelaceAsset.quantity : '0';
       const adaAmount = (parseInt(lovelaceAmount) / 1_000_000).toString();
 
       // Get other assets
-      const assets = addressDetails.amount.filter((a) => a.unit !== 'lovelace');
+      const assets = balance.filter((asset) => asset.unit !== 'lovelace');
 
       return {
         ada: adaAmount,
         lovelace: lovelaceAmount,
-        assets,
+        assets: assets.map((asset) => ({
+          unit: asset.unit,
+          quantity: asset.quantity,
+        })),
       };
     } catch (error) {
       logger.error('Failed to get wallet balance', { error });
@@ -232,15 +304,16 @@ export class PlatformWalletService {
   }
 
   /**
-   * Get detailed wallet information
+   * Get detailed wallet information using Mesh
    */
   async getWalletInfo(): Promise<WalletInfo> {
     try {
       const address = await this.getAddress();
       const balance = await this.getBalance();
+      const meshWallet = await this.getMeshWallet();
 
       // Get UTxOs count
-      const utxos = await this.blockfrost.addressesUtxos(address);
+      const utxos = await meshWallet.getUtxos();
 
       return {
         address,
@@ -298,12 +371,12 @@ export class PlatformWalletService {
   }
 
   /**
-   * Get UTxOs for the platform wallet
+   * Get UTxOs for the platform wallet using Mesh
    */
   async getUtxos(): Promise<any[]> {
     try {
-      const address = await this.getAddress();
-      return await this.blockfrost.addressesUtxos(address);
+      const meshWallet = await this.getMeshWallet();
+      return await meshWallet.getUtxos();
     } catch (error) {
       logger.error('Failed to get wallet UTxOs', { error });
       throw new PlatformWalletError('Failed to get wallet UTxOs', error as Error);
@@ -345,7 +418,31 @@ export class PlatformWalletService {
       throw new PlatformWalletError('Failed to rotate wallet keys', error as Error);
     }
   }
+  /**
+   * Sign a transaction using Mesh wallet
+   */
+  async signTransaction(unsignedTx: string): Promise<string> {
+    try {
+      const meshWallet = await this.getMeshWallet();
+      return await meshWallet.signTx(unsignedTx);
+    } catch (error) {
+      logger.error('Failed to sign transaction', { error });
+      throw new PlatformWalletError('Failed to sign transaction', error as Error);
+    }
+  }
 
+  /**
+   * Submit a signed transaction using Mesh
+   */
+  async submitTransaction(signedTx: string): Promise<string> {
+    try {
+      const meshWallet = await this.getMeshWallet();
+      return await meshWallet.submitTx(signedTx);
+    } catch (error) {
+      logger.error('Failed to submit transaction', { error });
+      throw new PlatformWalletError('Failed to submit transaction', error as Error);
+    }
+  }
   /**
    * Get vault key for private key storage
    */
