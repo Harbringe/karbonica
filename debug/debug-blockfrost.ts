@@ -1,56 +1,76 @@
 import { BlockfrostProvider } from '@meshsdk/core';
+import * as meshCore from '@meshsdk/core';
 
-async function debugLatestBlock() {
+async function debugMintingAPIs() {
   try {
-    const provider = new BlockfrostProvider('previewyZV8gILVy31lIdXSBwqscdbhs6H8gLGx');
+    console.log('=== Testing MeshSDK Minting APIs ===\n');
 
-    console.log('Fetching latest block...');
-    const latestBlock = await provider.fetchLatestBlock();
+    // Check what's exported from @meshsdk/core
+    console.log('Checking @meshsdk/core exports:');
+    console.log('- ForgeScript:', typeof (meshCore as any).ForgeScript);
+    console.log('- NativeScript:', typeof (meshCore as any).NativeScript);
+    console.log('- Transaction:', typeof (meshCore as any).Transaction);
+    console.log('- Mint:', typeof (meshCore as any).Mint);
+    console.log('- AssetMetadata:', typeof (meshCore as any).AssetMetadata);
 
-    console.log('Latest block structure:');
-    console.log(JSON.stringify(latestBlock, null, 2));
-
-    console.log('\nLatest block properties:');
-    console.log(Object.keys(latestBlock));
-
-    // Test fetchTxInfo to see transaction structure with a real transaction
-    console.log('\n--- Testing transaction structure ---');
-    try {
-      // Try to get a transaction from the latest block if it has any
-      if (latestBlock.txCount && latestBlock.txCount > 0) {
-        console.log('Latest block has transactions, but we need a specific tx hash to fetch');
+    // List all exports that contain 'forge', 'mint', or 'script'
+    console.log('\n=== Exports containing "forge", "mint", or "script": ===');
+    Object.keys(meshCore).forEach((key) => {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey.includes('forge') || lowerKey.includes('mint') || lowerKey.includes('script')) {
+        console.log(`- ${key}:`, typeof (meshCore as any)[key]);
       }
+    });
 
-      // For now, let's try with a placeholder and catch the error to see the structure
-      console.log('Attempting to fetch transaction info...');
+    // Test config values
+    console.log('\n=== Testing MintingPolicyConfig values ===');
+    const testConfig = {
+      type: 'before' as const,
+      slot: 12345678,
+      scripts: [],
+    };
 
-      // You can replace this with an actual transaction hash from Cardano Preview testnet
-      const sampleTxHash = '49f8295a3b135e7c91907c7532badbf5903858f7cc103b82c2ac0b019921fc98'; // This will fail, but we can see the error structure
-      const tx = await provider.fetchTxInfo(sampleTxHash);
+    
+    console.log('config.slot:', testConfig.slot);
+    console.log('config.scripts:', testConfig.scripts);
+    console.log('config.type:', testConfig.type);
 
-      console.log('Transaction structure:');
-      console.log(JSON.stringify(tx, null, 2));
-      console.log('\nTransaction properties:');
-      console.log(Object.keys(tx));
-    } catch (txError: any) {
-      console.log('Transaction fetch failed (expected):', txError?.message || txError);
-      console.log('Error status:', txError?.status);
+    // Try to check if ForgeScript exists and what methods it has
+    if ((meshCore as any).ForgeScript) {
+      console.log('\n=== ForgeScript methods ===');
+      const ForgeScript = (meshCore as any).ForgeScript;
+      console.log('ForgeScript.withOneSignature:', typeof ForgeScript.withOneSignature);
+      console.log('ForgeScript.withAllSignatures:', typeof ForgeScript.withAllSignatures);
+      console.log('ForgeScript.withAnySignature:', typeof ForgeScript.withAnySignature);
+
+      // Try to create a simple forge script
+      try {
+        const testAddress = 'addr_test1qz...'; // dummy address
+        const script = ForgeScript.withOneSignature(testAddress);
+        console.log('\nForgeScript.withOneSignature() returns:', typeof script);
+        console.log('Script value:', script);
+
+        // Check if it has methods
+        if (script && typeof script === 'object') {
+          console.log('Script methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(script)));
+        }
+      } catch (e: any) {
+        console.log('Error creating ForgeScript:', e.message);
+      }
     }
 
-    // Test fetchBlockInfo
-    console.log('\n--- Testing block info structure ---');
-    try {
-      const blockInfo = await provider.fetchBlockInfo(latestBlock.hash);
-      console.log('Block info structure:');
-      console.log(JSON.stringify(blockInfo, null, 2));
-      console.log('\nBlock info properties:');
-      console.log(Object.keys(blockInfo));
-    } catch (blockError: any) {
-      console.log('Block info fetch failed:', blockError?.message || blockError);
+    // Check NativeScript from core-cst
+    console.log('\n=== Checking @meshsdk/core-cst ===');
+    const coreCst = await import('@meshsdk/core-cst');
+    console.log('NativeScript from core-cst:', typeof coreCst.NativeScript);
+
+    if (coreCst.NativeScript) {
+      console.log('NativeScript properties:', Object.keys(coreCst.NativeScript));
     }
-  } catch (error) {
-    console.error('Error:', error);
+  } catch (error: any) {
+    console.error('Error:', error.message);
+    console.error('Stack:', error.stack);
   }
 }
 
-debugLatestBlock();
+debugMintingAPIs();
