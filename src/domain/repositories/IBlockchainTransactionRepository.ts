@@ -1,4 +1,4 @@
-import { BlockchainTransaction } from '../../domain/entities/BlockchainTransaction';
+import { BlockchainTransaction } from '../entities/BlockchainTransaction';
 
 export interface BlockchainTransactionRepository {
   save(transaction: BlockchainTransaction): Promise<BlockchainTransaction>;

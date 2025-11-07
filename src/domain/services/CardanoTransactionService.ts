@@ -7,9 +7,10 @@ import {
   BlockchainTransaction,
   BlockchainTransactionError,
 } from '../entities/BlockchainTransaction';
-import { BlockchainTransactionRepository } from '../repositories/BlockchainTransactionRepository';
+import { BlockchainTransactionRepository } from '../repositories/IBlockchainTransactionRepository';
 import { RateLimiter } from '../../infrastructure/services/RateLimiter';
 import { TransactionMonitoringService } from '../../infrastructure/services/TransactionMonitoringService';
+import { CardanoErrorHandler } from '../../infrastructure/services/CardanoErrorHandler';
 
 export interface TransactionMetadata {
   [key: string]: any;
@@ -50,6 +51,7 @@ export class CardanoTransactionService {
   private blockchainTxRepo: BlockchainTransactionRepository;
   private rateLimiter: RateLimiter;
   private monitoringService: TransactionMonitoringService;
+  private errorHandler: CardanoErrorHandler;
 
   constructor(
     platformWallet: PlatformWalletService,
@@ -58,66 +60,80 @@ export class CardanoTransactionService {
     this.platformWallet = platformWallet;
     this.blockchainTxRepo = blockchainTxRepo;
     this.rateLimiter = new RateLimiter(50, 1000); // 50 requests per second
-    this.monitoringService = new TransactionMonitoringService(blockchainTxRepo);
+    this.errorHandler = new CardanoErrorHandler(blockchainTxRepo);
+    this.monitoringService = new TransactionMonitoringService(blockchainTxRepo, this.errorHandler);
   }
 
   async buildTransaction(
     outputs: TransactionOutput[],
     metadata?: TransactionMetadata
   ): Promise<UnsignedTransaction> {
-    try {
-      // Get the Mesh wallet from PlatformWalletService
-      const meshWallet = await this.platformWallet.getMeshWallet();
-      const utxos = await meshWallet.getUtxos();
-      const changeAddress = await meshWallet.getChangeAddress();
-
-      // Get the provider from PlatformWalletService
-      const cardanoConfig = getCardanoConfig();
-      const provider = new BlockfrostProvider(cardanoConfig.blockfrostApiKey);
-
-      // Create transaction builder
-      const txBuilder = new MeshTxBuilder({
-        fetcher: provider,
-        submitter: provider,
-        verbose: true,
-      });
-
-      // Add outputs
-      for (const output of outputs) {
-        txBuilder.txOut(output.address, [
-          {
-            unit: 'lovelace',
-            quantity: output.amount,
-          },
-        ]);
-      }
-
-      // Add metadata if provided (CIP-20 uses label 674)
-      if (metadata) {
-        txBuilder.metadataValue(674, { msg: [JSON.stringify(this.formatCip20Metadata(metadata))] });
-      }
-
-      // Set change address and select UTxOs
-      const unsignedTx = await txBuilder
-        .changeAddress(changeAddress)
-        .selectUtxosFrom(utxos)
-        .complete();
-
-      // Calculate the fee for this transaction
-      const calculatedFee = await this.calculateFee(outputs, metadata);
-
-      return {
-        txBody: unsignedTx, // This is already CBOR hex string
-        txHash: '', // Will be set after signing
-        fee: calculatedFee,
-        inputs: [],
-        outputs: outputs,
-        metadata: metadata,
-      };
-    } catch (error) {
-      logger.error('Failed to build transaction', { error });
-      throw new CardanoTransactionError('Failed to build transaction', error as Error);
+    // Check if in fallback mode
+    if (this.errorHandler.isFallbackMode()) {
+      logger.warn('System in fallback mode - transaction will be queued', { outputs, metadata });
+      throw new CardanoTransactionError(
+        'System in fallback mode - Blockfrost API unavailable. Transaction will be queued for later processing.'
+      );
     }
+
+    return this.errorHandler.executeWithRetry(
+      async () => {
+        // Get the Mesh wallet from PlatformWalletService
+        const meshWallet = await this.platformWallet.getMeshWallet();
+        const utxos = await meshWallet.getUtxos();
+        const changeAddress = await meshWallet.getChangeAddress();
+
+        // Get the provider from PlatformWalletService
+        const cardanoConfig = getCardanoConfig();
+        const provider = new BlockfrostProvider(cardanoConfig.blockfrostApiKey);
+
+        // Create transaction builder
+        const txBuilder = new MeshTxBuilder({
+          fetcher: provider,
+          submitter: provider,
+          verbose: true,
+        });
+
+        // Add outputs
+        for (const output of outputs) {
+          txBuilder.txOut(output.address, [
+            {
+              unit: 'lovelace',
+              quantity: output.amount,
+            },
+          ]);
+        }
+
+        // Add metadata if provided (CIP-20 uses label 674)
+        if (metadata) {
+          txBuilder.metadataValue(674, {
+            msg: [JSON.stringify(this.formatCip20Metadata(metadata))],
+          });
+        }
+
+        // Set change address and select UTxOs
+        const unsignedTx = await txBuilder
+          .changeAddress(changeAddress)
+          .selectUtxosFrom(utxos)
+          .complete();
+
+        // Calculate the fee for this transaction
+        const calculatedFee = await this.calculateFee(outputs, metadata);
+
+        return {
+          txBody: unsignedTx, // This is already CBOR hex string
+          txHash: '', // Will be set after signing
+          fee: calculatedFee,
+          inputs: [],
+          outputs: outputs,
+          metadata: metadata,
+        };
+      },
+      {
+        operationName: 'buildTransaction',
+        metadata: { outputs, metadata },
+      }
+    );
   }
 
   async getProtocolParameters(): Promise<any> {
@@ -237,58 +253,96 @@ export class CardanoTransactionService {
   }
 
   async signTransaction(unsignedTxCbor: string): Promise<string> {
-    try {
-      const meshWallet = await this.platformWallet.getMeshWallet();
+    return this.errorHandler.executeWithRetry(
+      async () => {
+        const meshWallet = await this.platformWallet.getMeshWallet();
 
-      // Sign the transaction using Mesh SDK
-      const signedTx = await meshWallet.signTx(unsignedTxCbor);
+        // Sign the transaction using Mesh SDK
+        const signedTx = await meshWallet.signTx(unsignedTxCbor);
 
-      logger.info('Transaction signed successfully', {
-        txSize: signedTx.length,
-      });
+        logger.info('Transaction signed successfully', {
+          txSize: signedTx.length,
+        });
 
-      return signedTx;
-    } catch (error) {
-      logger.error('Failed to sign transaction', { error });
-      throw new BlockchainTransactionError('Failed to sign transaction', error as Error);
-    }
+        return signedTx;
+      },
+      {
+        operationName: 'signTransaction',
+        metadata: { txCborLength: unsignedTxCbor.length },
+      }
+    );
   }
 
   async submitTransaction(signedTxCbor: string, metadata?: BlockchainMetadata): Promise<string> {
-    try {
-      // Apply rate limiting before submission
-      await this.rateLimiter.checkLimit();
+    // Check if in fallback mode
+    if (this.errorHandler.isFallbackMode()) {
+      logger.warn('System in fallback mode - transaction will be queued', { metadata });
 
-      const meshWallet = await this.platformWallet.getMeshWallet();
-
-      // Submit the transaction using Mesh SDK
-      const txHash = await meshWallet.submitTx(signedTxCbor);
-
-      // Record the transaction in our database
+      // Create a pending transaction record for later processing
       const blockchainTx: BlockchainTransaction = {
         id: this.generateTransactionId(),
-        txHash,
+        txHash: `fallback_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         status: 'pending',
         submissionTimestamp: new Date(),
         retryCount: 0,
-        metadata,
+        metadata: {
+          ...metadata,
+          fallbackMode: true,
+          signedTxCbor, // Store the signed transaction for later submission
+        },
       };
 
       await this.blockchainTxRepo.save(blockchainTx);
 
-      // Start monitoring the transaction
-      await this.monitoringService.startMonitoring(txHash);
-
-      logger.info('Transaction submitted successfully', {
-        txHash,
-        metadata,
-      });
-
-      return txHash;
-    } catch (error) {
-      logger.error('Failed to submit transaction', { error });
-      throw new BlockchainTransactionError('Failed to submit transaction', error as Error);
+      throw new CardanoTransactionError(
+        'System in fallback mode - transaction queued for later submission'
+      );
     }
+
+    return this.errorHandler
+      .executeWithRetry(
+        async () => {
+          // Apply rate limiting before submission
+          await this.rateLimiter.checkLimit();
+
+          const meshWallet = await this.platformWallet.getMeshWallet();
+
+          // Submit the transaction using Mesh SDK
+          const txHash = await meshWallet.submitTx(signedTxCbor);
+
+          // Record the transaction in our database
+          const blockchainTx: BlockchainTransaction = {
+            id: this.generateTransactionId(),
+            txHash,
+            status: 'pending',
+            submissionTimestamp: new Date(),
+            retryCount: 0,
+            metadata,
+          };
+
+          await this.blockchainTxRepo.save(blockchainTx);
+
+          // Start monitoring the transaction
+          await this.monitoringService.startMonitoring(txHash);
+
+          logger.info('Transaction submitted successfully', {
+            txHash,
+            metadata,
+          });
+
+          return txHash;
+        },
+        {
+          operationName: 'submitTransaction',
+          metadata,
+        }
+      )
+      .catch(async (error) => {
+        // Handle transaction failure
+        const tempTxHash = `failed_${Date.now()}`;
+        await this.errorHandler.handleTransactionFailure(tempTxHash, error as Error, metadata);
+        throw error;
+      });
   }
 
   async buildSignAndSubmitTransaction(
@@ -327,6 +381,13 @@ export class CardanoTransactionService {
   }
 
   /**
+   * Get the error handler instance
+   */
+  getErrorHandler(): CardanoErrorHandler {
+    return this.errorHandler;
+  }
+
+  /**
    * Start monitoring pending transactions (convenience method)
    */
   async startMonitoringPendingTransactions(): Promise<void> {
@@ -338,6 +399,45 @@ export class CardanoTransactionService {
    */
   stopAllMonitoring(): void {
     this.monitoringService.stopAllMonitoring();
+  }
+
+  /**
+   * Check if system is in fallback mode
+   */
+  isFallbackMode(): boolean {
+    return this.errorHandler.isFallbackMode();
+  }
+
+  /**
+   * Get failed transaction queue
+   */
+  getFailedTransactionQueue() {
+    return this.errorHandler.getFailedTransactionQueue();
+  }
+
+  /**
+   * Get error handler statistics
+   */
+  getErrorHandlerStatistics() {
+    return this.errorHandler.getStatistics();
+  }
+
+  /**
+   * Retry a failed transaction
+   */
+  async retryFailedTransaction(id: string): Promise<boolean> {
+    return this.errorHandler.retryFailedTransaction(id, async () => {
+      // Find the transaction in the database
+      const tx = await this.blockchainTxRepo.findById(id);
+      if (!tx || !tx.metadata?.signedTxCbor) {
+        throw new Error('Transaction not found or missing signed transaction data');
+      }
+
+      // Resubmit the transaction
+      const txHash = await this.submitTransaction(tx.metadata.signedTxCbor, tx.metadata);
+
+      logger.info('Failed transaction resubmitted', { id, txHash });
+    });
   }
 }
 

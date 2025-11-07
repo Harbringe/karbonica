@@ -20,10 +20,13 @@ import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import { startSessionCleanupScheduler, stopSessionCleanupScheduler } from './utils/sessionCleanup';
 
-import { InMemoryBlockchainTransactionRepository } from './domain/repositories/BlockchainTransactionRepository';
+import { InMemoryBlockchainTransactionRepository } from './domain/repositories/IBlockchainTransactionRepository';
 import { CardanoTransactionService } from './domain/services/CardanoTransactionService';
 import { PlatformWalletService } from './infrastructure/services/PlatformWalletService';
 import { FileDevVaultService } from './infrastructure/services/VaultService';
+
+import { CardanoMintingService } from './domain/services/CardanoMintingService';
+import { MintingTransactionRepositoryImpl } from './infrastructure/repositories/MintingTransactionRepository';
 
 class App {
   public app: Application;

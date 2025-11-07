@@ -1,8 +1,8 @@
 import { BlockfrostProvider } from '@meshsdk/core';
-import { BlockchainTransactionRepository } from '../../domain/repositories/BlockchainTransactionRepository';
-import { BlockchainTransaction } from '../../domain/entities/BlockchainTransaction';
+import { BlockchainTransactionRepository } from '../../domain/repositories/IBlockchainTransactionRepository';
 import { getCardanoConfig } from '../../config/cardano';
 import { logger } from '../../utils/logger';
+import { CardanoErrorHandler } from './CardanoErrorHandler';
 
 export interface TransactionStatus {
   confirmed: boolean;
@@ -15,13 +15,18 @@ export interface TransactionStatus {
 export class TransactionMonitoringService {
   private readonly provider: BlockfrostProvider;
   private readonly blockchainTxRepo: BlockchainTransactionRepository;
+  private readonly errorHandler: CardanoErrorHandler;
   private readonly pollingInterval: number = 20000; // 20 seconds
   private readonly timeoutDuration: number = 10 * 60 * 1000; // 10 minutes
   private readonly requiredConfirmations: number = 6;
   private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map();
 
-  constructor(blockchainTxRepo: BlockchainTransactionRepository) {
+  constructor(
+    blockchainTxRepo: BlockchainTransactionRepository,
+    errorHandler?: CardanoErrorHandler
+  ) {
     this.blockchainTxRepo = blockchainTxRepo;
+    this.errorHandler = errorHandler || new CardanoErrorHandler(blockchainTxRepo);
     const cardanoConfig = getCardanoConfig();
     this.provider = new BlockfrostProvider(cardanoConfig.blockfrostApiKey);
   }
@@ -146,40 +151,48 @@ export class TransactionMonitoringService {
    * Get transaction status from Blockfrost API
    */
   private async getTransactionStatus(txHash: string): Promise<TransactionStatus> {
-    try {
-      // Get transaction details
-      const tx = await this.provider.fetchTxInfo(txHash);
+    return this.errorHandler.executeWithRetry(
+      async () => {
+        try {
+          // Get transaction details
+          const tx = await this.provider.fetchTxInfo(txHash);
 
-      // Get current latest block
-      const latestBlock = await this.provider.fetchLatestBlock();
+          // Get current latest block
+          const latestBlock = await this.provider.fetchLatestBlock();
 
-      // Calculate confirmations based on slot difference
-      // In Cardano, blocks are produced roughly every 20 seconds on average
-      const currentSlot = parseInt(latestBlock.slot);
-      const txSlot = parseInt(tx.slot);
-      const slotDifference = currentSlot - txSlot;
+          // Calculate confirmations based on slot difference
+          // In Cardano, blocks are produced roughly every 20 seconds on average
+          const currentSlot = parseInt(latestBlock.slot);
+          const txSlot = parseInt(tx.slot);
+          const slotDifference = currentSlot - txSlot;
 
-      // Estimate confirmations: each block is roughly 20 seconds apart
-      const estimatedConfirmations = Math.floor(slotDifference / 20);
+          // Estimate confirmations: each block is roughly 20 seconds apart
+          const estimatedConfirmations = Math.floor(slotDifference / 20);
 
-      return {
-        confirmed: true,
-        confirmations: Math.max(0, estimatedConfirmations),
-        blockNumber: undefined, // Block height not available in Mesh SDK response
-        blockHash: tx.block,
-        slot: parseInt(tx.slot),
-      };
-    } catch (error) {
-      const errorObj = error as any;
-      if (errorObj?.status === 404) {
-        // Transaction not yet in a block
-        return {
-          confirmed: false,
-          confirmations: 0,
-        };
+          return {
+            confirmed: true,
+            confirmations: Math.max(0, estimatedConfirmations),
+            blockNumber: undefined, // Block height not available in Mesh SDK response
+            blockHash: tx.block,
+            slot: parseInt(tx.slot),
+          };
+        } catch (error) {
+          const errorObj = error as any;
+          if (errorObj?.status === 404) {
+            // Transaction not yet in a block
+            return {
+              confirmed: false,
+              confirmations: 0,
+            };
+          }
+          throw error;
+        }
+      },
+      {
+        operationName: 'getTransactionStatus',
+        txHash,
       }
-      throw error;
-    }
+    );
   }
 
   /**
