@@ -10,7 +10,7 @@ import {
 } from '../application/dto/project.dto';
 import { validateRequest } from '../middleware/validation';
 import { authenticate } from '../middleware/authenticate';
-import { authorize, requireRole } from '../middleware/authorize';
+import { authorize } from '../middleware/authorize';
 import { UserRole } from '../domain/entities/User';
 import { Resource, Action } from '../middleware/permissions';
 import { ProjectFilters, PaginationOptions } from '../domain/repositories/IProjectRepository';
@@ -322,24 +322,33 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
     const userRole = req.user!.role;
 
     const filters: ProjectFilters = {};
+    const sortOrderQuery = req.query.sortOrder as string;
+
+    // SECURITY: Whitelist allowed sort columns to prevent SQL injection
+    const ALLOWED_SORT_COLUMNS = ['created_at', 'updated_at', 'title', 'status', 'type', 'id'];
+    const requestedSortBy = req.query.sortBy as string;
+    const validatedSortBy = ALLOWED_SORT_COLUMNS.includes(requestedSortBy)
+      ? requestedSortBy
+      : 'created_at';
+
     const pagination: PaginationOptions = {
       limit: parseInt(req.query.limit as string) || 20,
       cursor: req.query.cursor as string,
-      sortBy: (req.query.sortBy as string) || 'created_at',
-      sortOrder: (req.query.sortOrder as string) || 'desc',
+      sortBy: validatedSortBy,
+      sortOrder: sortOrderQuery === 'asc' ? 'asc' : 'desc',
     };
 
     // Apply filters based on query parameters
     if (req.query.status) {
-      filters.status = req.query.status;
+      filters.status = req.query.status as string;
     }
 
     if (req.query.type) {
-      filters.type = req.query.type;
+      filters.type = req.query.type as string;
     }
 
     if (req.query.country) {
-      filters.country = req.query.country;
+      filters.country = req.query.country as string;
     }
 
     // Apply role-based filtering
@@ -398,7 +407,7 @@ router.get('/', authenticate, async (req: Request, res: Response, next: NextFunc
         })),
         pagination: {
           total: totalCount,
-          limit: pagination.limit,
+          limit: pagination.limit ?? 20,
           cursor: nextCursor,
           hasMore: nextCursor !== null,
         },

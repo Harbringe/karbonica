@@ -229,24 +229,33 @@ router.get(
       const userRole = req.user!.role;
 
       const filters: VerificationFilters = {};
+      const sortOrderQuery = req.query.sortOrder as string;
+
+      // SECURITY: Whitelist allowed sort columns to prevent SQL injection
+      const ALLOWED_SORT_COLUMNS = ['created_at', 'updated_at', 'submitted_at', 'assigned_at', 'completed_at', 'reviewed_at', 'status', 'id'];
+      const requestedSortBy = req.query.sortBy as string;
+      const validatedSortBy = ALLOWED_SORT_COLUMNS.includes(requestedSortBy)
+        ? requestedSortBy
+        : 'created_at';
+
       const pagination: PaginationOptions = {
         limit: parseInt(req.query.limit as string) || 20,
         cursor: req.query.cursor as string,
-        sortBy: (req.query.sortBy as string) || 'created_at',
-        sortOrder: (req.query.sortOrder as string) || 'desc',
+        sortBy: validatedSortBy,
+        sortOrder: sortOrderQuery === 'asc' ? 'asc' : 'desc',
       };
 
       // Apply filters based on query parameters
       if (req.query.status) {
-        filters.status = req.query.status;
+        filters.status = req.query.status as string;
       }
 
       if (req.query.developerId) {
-        filters.developerId = req.query.developerId;
+        filters.developerId = req.query.developerId as string;
       }
 
       if (req.query.verifierId) {
-        filters.verifierId = req.query.verifierId;
+        filters.verifierId = req.query.verifierId as string;
       }
 
       const verificationRepository = getVerificationRepository();
