@@ -1,0 +1,217 @@
+@import "tailwindcss";
+
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* 
+ * Karbonica Premium Design Tokens
+ * Aesthetic: Eco-friendly, Faded Modern, Premium
+ * Palette: Warm Alabaster, Deep Jungle, Muted Fern, Soft Sage
+ */
+
+:root {
+  --radius: 0.75rem;
+  /* Softer, rounder corners */
+
+  /* 
+   * Light Mode Pattern
+   * Base: Warm Off-White (Faded Paper)
+   * Contrast: Deep Green-Black (Ink)
+   */
+  --background: oklch(0.985 0.005 90);
+  /* Warm Alabaster - #FDFDFB */
+  --foreground: oklch(0.25 0.04 150);
+  /* Deep Jungle Green - Softer than black */
+
+  --card: oklch(1 0 0 / 0.7);
+  /* White with opacity for glassmorphism */
+  --card-foreground: oklch(0.25 0.04 150);
+
+  --popover: oklch(1 0 0 / 0.95);
+  --popover-foreground: oklch(0.25 0.04 150);
+
+  --primary: oklch(0.55 0.12 150);
+  /* Premium Fern Green */
+  --primary-foreground: oklch(0.98 0.005 90);
+
+  --secondary: oklch(0.96 0.01 150);
+  /* Very light sage hint */
+  --secondary-foreground: oklch(0.35 0.08 150);
+
+  --muted: oklch(0.96 0.01 150);
+  --muted-foreground: oklch(0.55 0.05 150);
+  /* Muted Green-Gray */
+
+  --accent: oklch(0.90 0.15 85);
+  /* Soft Gold - Premium accent */
+  --accent-foreground: oklch(0.30 0.05 150);
+
+  --destructive: oklch(0.65 0.18 25);
+  /* Muted Red */
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(0.92 0.01 150);
+  /* Subtle Sage Grey */
+  --input: oklch(0.92 0.01 150);
+  --ring: oklch(0.55 0.12 150);
+  /* Matches primary */
+
+  /* Charts - Nature inspired */
+  --chart-1: oklch(0.55 0.12 150);
+  /* Fern */
+  --chart-2: oklch(0.65 0.10 200);
+  /* Ocean */
+  --chart-3: oklch(0.75 0.15 85);
+  /* Sun/Gold */
+  --chart-4: oklch(0.60 0.12 170);
+  /* Teal */
+  --chart-5: oklch(0.70 0.15 50);
+  /* Terracotta */
+
+  /* Sidebar - Glass-like */
+  --sidebar: oklch(0.98 0.005 90 / 0.8);
+  --sidebar-foreground: oklch(0.35 0.08 150);
+  --sidebar-primary: oklch(0.55 0.12 150);
+  --sidebar-primary-foreground: oklch(0.98 0.005 90);
+  --sidebar-accent: oklch(0.94 0.02 150);
+  --sidebar-accent-foreground: oklch(0.35 0.08 150);
+  --sidebar-border: oklch(0.92 0.01 150 / 0.5);
+  --sidebar-ring: oklch(0.55 0.12 150);
+}
+
+/* Dark Mode - Deep Forest Night */
+.dark {
+  --background: oklch(0.18 0.04 150);
+  /* Deepest Forest Green */
+  --foreground: oklch(0.95 0.01 150);
+  /* Mist White */
+
+  --card: oklch(0.22 0.05 150 / 0.6);
+  /* Dark Glass */
+  --card-foreground: oklch(0.95 0.01 150);
+
+  --popover: oklch(0.22 0.05 150 / 0.95);
+  --popover-foreground: oklch(0.95 0.01 150);
+
+  --primary: oklch(0.65 0.15 150);
+  /* Brighter Fern for contrast */
+  --primary-foreground: oklch(0.15 0.05 150);
+
+  --secondary: oklch(0.25 0.06 150);
+  --secondary-foreground: oklch(0.95 0.01 150);
+
+  --muted: oklch(0.25 0.06 150);
+  --muted-foreground: oklch(0.70 0.05 150);
+
+  --accent: oklch(0.75 0.15 85);
+  /* Gold */
+  --accent-foreground: oklch(0.15 0.05 150);
+
+  --destructive: oklch(0.65 0.18 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(0.95 0.01 150 / 0.1);
+  /* Subtle light border */
+  --input: oklch(0.95 0.01 150 / 0.1);
+  --ring: oklch(0.65 0.15 150);
+
+  --sidebar: oklch(0.16 0.04 150 / 0.8);
+  --sidebar-foreground: oklch(0.80 0.02 150);
+  --sidebar-primary: oklch(0.65 0.15 150);
+  --sidebar-primary-foreground: oklch(0.15 0.05 150);
+  --sidebar-accent: oklch(0.25 0.06 150);
+  --sidebar-accent-foreground: oklch(0.95 0.01 150);
+  --sidebar-border: oklch(0.95 0.01 150 / 0.1);
+  --sidebar-ring: oklch(0.65 0.15 150);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    background-image:
+      radial-gradient(at 0% 0%, oklch(0.96 0.02 150 / 0.5) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, oklch(0.95 0.05 85 / 0.3) 0px, transparent 50%);
+    min-height: 100vh;
+  }
+
+  /* Glassmorphism utilities */
+  .glass {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-sm dark:bg-black/40 dark:border-white/10;
+  }
+
+  .glass-card {
+    @apply bg-card backdrop-blur-sm shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1;
+  }
+}
+
+@layer utilities {
+  .animate-in {
+    animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-up {
+    animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
